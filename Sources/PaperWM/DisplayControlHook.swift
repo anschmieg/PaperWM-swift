@@ -10,6 +10,7 @@ public class DisplayControlHook {
     public static let shared = DisplayControlHook()
     
     private var observers: [NSObjectProtocol] = []
+    private let idLock = NSLock()
     private var nextDisplayId: Int = 1
     
     private init() {}
@@ -101,15 +102,20 @@ public class DisplayControlHook {
         
         print("DisplayControlHook: Creating virtual display - \(width)x\(height)")
         
+        // TODO: Replace with actual DeskPad API call
         // This is where we would call DeskPad's virtual display creation API
         // For now, we'll simulate the call and log the action
         
         // Example call (to be replaced with actual DeskPad API):
         // let displayId = DeskPad.createVirtualDisplay(width: width, height: height)
         
-        // Simulated success with sequential ID
-        let displayId = nextDisplayId
+        // PLACEHOLDER: Simulated success with thread-safe sequential ID - MUST BE REPLACED
+        let displayId: Int
+        idLock.lock()
+        displayId = nextDisplayId
         nextDisplayId += 1
+        idLock.unlock()
+        
         print("DisplayControlHook: Virtual display created successfully - ID: \(displayId)")
         
         sendResponse(
@@ -128,13 +134,14 @@ public class DisplayControlHook {
         
         print("DisplayControlHook: Removing virtual display - ID: \(displayId)")
         
+        // TODO: Replace with actual DeskPad API call
         // This is where we would call DeskPad's virtual display removal API
         // For now, we'll simulate the call and log the action
         
         // Example call (to be replaced with actual DeskPad API):
         // DeskPad.removeVirtualDisplay(displayId: displayId)
         
-        // Simulated success
+        // PLACEHOLDER: Simulated success - MUST BE REPLACED
         print("DisplayControlHook: Virtual display removed successfully - ID: \(displayId)")
         
         sendResponse(
@@ -147,13 +154,14 @@ public class DisplayControlHook {
     private func handleListDisplays() {
         print("DisplayControlHook: Listing virtual displays")
         
+        // TODO: Replace with actual DeskPad API call
         // This is where we would call DeskPad's virtual display listing API
         // For now, we'll simulate the call and log the action
         
         // Example call (to be replaced with actual DeskPad API):
         // let displays = DeskPad.listVirtualDisplays()
         
-        // Simulated response
+        // PLACEHOLDER: Simulated response - MUST BE REPLACED
         let displays: [[String: Any]] = [
             ["id": 1, "width": 1920, "height": 1080, "active": true],
             ["id": 2, "width": 2560, "height": 1440, "active": true]

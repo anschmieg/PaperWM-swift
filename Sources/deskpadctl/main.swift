@@ -2,7 +2,7 @@ import Foundation
 #if canImport(AppKit)
 import AppKit
 #endif
-@testable import PaperWM
+import PaperWM
 
 /// CLI tool to send commands to DeskPad via Distributed Notification Center
 @main
