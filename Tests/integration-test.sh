@@ -79,10 +79,17 @@ fi
 # Test 7: Verify DisplayControl.swift exists
 echo ""
 echo "Test 7: Verify DisplayControl component"
-if [ -f "$PROJECT_ROOT/submodules/DeskPad/DeskPad/DisplayControl.swift" ]; then
-    echo "  ✓ DisplayControl.swift exists"
+if [ -f "$PROJECT_ROOT/Integration/DeskPad/DisplayControl.swift" ]; then
+    echo "  ✓ DisplayControl.swift exists in Integration directory"
 else
-    echo "  ✗ DisplayControl.swift not found"
+    echo "  ✗ DisplayControl.swift not found in Integration directory"
+    exit 1
+fi
+
+if [ -f "$PROJECT_ROOT/Integration/DeskPad/DISPLAYCONTROL_INTEGRATION.md" ]; then
+    echo "  ✓ DisplayControl integration guide exists"
+else
+    echo "  ✗ DisplayControl integration guide not found"
     exit 1
 fi
 

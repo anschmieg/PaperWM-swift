@@ -90,7 +90,8 @@ required_files=(
     "Tools/deskpadctl/Package.swift"
     "Scripts/arrange-canvas.sh"
     "Scripts/pan-canvas.sh"
-    "submodules/DeskPad/DeskPad/DisplayControl.swift"
+    "Integration/DeskPad/DisplayControl.swift"
+    "Integration/DeskPad/DISPLAYCONTROL_INTEGRATION.md"
 )
 
 for file in "${required_files[@]}"; do

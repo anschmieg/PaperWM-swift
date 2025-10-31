@@ -16,6 +16,8 @@ PaperWM-swift provides a complete PaperWM-like canvas application for macOS, lev
 ### 1. DeskPad Submodule
 DeskPad is integrated as a git submodule under `submodules/DeskPad`. It provides virtual display functionality using CoreGraphics.
 
+**Integration files** for adding DisplayControl to DeskPad are provided in `Integration/DeskPad/`. These files are kept separate to avoid modifying the third-party DeskPad repository.
+
 ### 2. deskpadctl CLI
 A Swift command-line tool for controlling DeskPad virtual displays via distributed notifications.
 
@@ -67,6 +69,40 @@ make install
 - Swift 5.9 or later
 - Xcode command-line tools
 
+## Quick Start
+
+1. **Clone the repository with submodules:**
+   ```bash
+   git clone --recursive https://github.com/anschmieg/PaperWM-swift.git
+   cd PaperWM-swift
+   ```
+
+2. **Build the tools:**
+   ```bash
+   make build
+   ```
+
+3. **Run tests:**
+   ```bash
+   make test
+   ./Tests/integration-test.sh
+   ./Tests/e2e-smoke-test.sh
+   ```
+
+4. **Optional: Integrate DisplayControl with DeskPad:**
+   ```bash
+   # Copy integration files
+   cp Integration/DeskPad/DisplayControl.swift submodules/DeskPad/DeskPad/
+   
+   # Follow instructions in Integration/DeskPad/README.md
+   ```
+
+5. **Use deskpadctl:**
+   ```bash
+   # Create a virtual display
+   Tools/deskpadctl/.build/release/deskpadctl create --width 1920 --height 1080
+   ```
+
 ## Development
 
 ### Repository Structure
@@ -74,12 +110,19 @@ make install
 PaperWM-swift/
 ├── submodules/
 │   └── DeskPad/              # DeskPad submodule
+├── Integration/
+│   └── DeskPad/              # DisplayControl integration files
+│       ├── DisplayControl.swift
+│       ├── DISPLAYCONTROL_INTEGRATION.md
+│       └── README.md
 ├── Tools/
 │   └── deskpadctl/           # deskpadctl CLI tool
 ├── Scripts/
 │   ├── arrange-canvas.sh     # Canvas arrangement script
 │   └── pan-canvas.sh         # Canvas panning script
 ├── Tests/                    # Test suites
+│   ├── integration-test.sh
+│   └── e2e-smoke-test.sh
 ├── Makefile                  # Build configuration
 └── .github/
     └── workflows/
