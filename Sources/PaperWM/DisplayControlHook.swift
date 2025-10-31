@@ -112,9 +112,9 @@ public class DisplayControlHook {
         // PLACEHOLDER: Simulated success with thread-safe sequential ID - MUST BE REPLACED
         let displayId: Int
         idLock.lock()
+        defer { idLock.unlock() }
         displayId = nextDisplayId
         nextDisplayId += 1
-        idLock.unlock()
         
         print("DisplayControlHook: Virtual display created successfully - ID: \(displayId)")
         
