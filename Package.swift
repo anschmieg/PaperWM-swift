@@ -31,7 +31,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "deskpadctl",
-            dependencies: [],
+            dependencies: ["PaperWM"],
             path: "Sources/deskpadctl"
         ),
         .testTarget(

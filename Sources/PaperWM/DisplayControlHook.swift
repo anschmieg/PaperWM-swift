@@ -10,6 +10,7 @@ public class DisplayControlHook {
     public static let shared = DisplayControlHook()
     
     private var observers: [NSObjectProtocol] = []
+    private var nextDisplayId: Int = 1
     
     private init() {}
     
@@ -59,38 +60,34 @@ public class DisplayControlHook {
     }
     
     private func handleNotification(_ notification: Notification) {
-        guard let userInfo = notification.userInfo,
-              let commandString = userInfo["command"] as? String else {
-            print("DisplayControlHook: Invalid notification received")
-            sendResponse(success: false, message: "Invalid notification format")
-            return
-        }
-        
-        guard let commandData = commandString.data(using: .utf8),
-              let command = try? JSONSerialization.jsonObject(with: commandData) as? [String: Any] else {
-            print("DisplayControlHook: Failed to parse command JSON")
-            sendResponse(success: false, message: "Failed to parse command JSON")
-            return
-        }
-        
-        guard let action = command["action"] as? String else {
-            print("DisplayControlHook: No action specified in command")
-            sendResponse(success: false, message: "No action specified")
-            return
-        }
-        
-        print("DisplayControlHook: Received command - action: \(action)")
-        
-        switch action {
-        case "create":
-            handleCreateDisplay(command: command)
-        case "remove":
-            handleRemoveDisplay(command: command)
-        case "list":
-            handleListDisplays()
-        default:
-            print("DisplayControlHook: Unknown action: \(action)")
-            sendResponse(success: false, message: "Unknown action: \(action)")
+        do {
+            let command = try NotificationUtility.parseJSONFromNotification(
+                userInfo: notification.userInfo,
+                key: "command"
+            )
+            
+            guard let action = command["action"] as? String else {
+                print("DisplayControlHook: No action specified in command")
+                sendResponse(success: false, message: "No action specified")
+                return
+            }
+            
+            print("DisplayControlHook: Received command - action: \(action)")
+            
+            switch action {
+            case "create":
+                handleCreateDisplay(command: command)
+            case "remove":
+                handleRemoveDisplay(command: command)
+            case "list":
+                handleListDisplays()
+            default:
+                print("DisplayControlHook: Unknown action: \(action)")
+                sendResponse(success: false, message: "Unknown action: \(action)")
+            }
+        } catch {
+            print("DisplayControlHook: Failed to parse notification: \(error)")
+            sendResponse(success: false, message: "Failed to parse command: \(error.localizedDescription)")
         }
     }
     
@@ -110,8 +107,9 @@ public class DisplayControlHook {
         // Example call (to be replaced with actual DeskPad API):
         // let displayId = DeskPad.createVirtualDisplay(width: width, height: height)
         
-        // Simulated success
-        let displayId = Int.random(in: 1...1000)
+        // Simulated success with sequential ID
+        let displayId = nextDisplayId
+        nextDisplayId += 1
         print("DisplayControlHook: Virtual display created successfully - ID: \(displayId)")
         
         sendResponse(
@@ -182,22 +180,11 @@ public class DisplayControlHook {
         }
         
         do {
-            let jsonData = try JSONSerialization.data(withJSONObject: response, options: .prettyPrinted)
-            guard let jsonString = String(data: jsonData, encoding: .utf8) else {
-                print("DisplayControlHook: Failed to convert response to JSON string")
-                return
-            }
-            
-            let center = DistributedNotificationCenter.default()
-            let userInfo: [AnyHashable: Any] = ["response": jsonString]
-            
-            center.postNotificationName(
-                NSNotification.Name("com.deskpad.control.response"),
-                object: nil,
-                userInfo: userInfo,
-                deliverImmediately: true
+            try NotificationUtility.sendJSONNotification(
+                payload: response,
+                notificationName: .response,
+                key: "response"
             )
-            
             print("DisplayControlHook: Response sent - \(message)")
         } catch {
             print("DisplayControlHook: Failed to send response: \(error)")

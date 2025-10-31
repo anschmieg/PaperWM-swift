@@ -2,6 +2,7 @@ import Foundation
 #if canImport(AppKit)
 import AppKit
 #endif
+@testable import PaperWM
 
 /// CLI tool to send commands to DeskPad via Distributed Notification Center
 @main
@@ -107,23 +108,13 @@ struct DeskPadCtl {
     static func sendCommand(_ command: [String: Any]) {
         #if os(macOS)
         do {
-            let jsonData = try JSONSerialization.data(withJSONObject: command, options: [])
-            guard let jsonString = String(data: jsonData, encoding: .utf8) else {
-                print("Error: Failed to convert command to JSON string")
-                exit(1)
-            }
-            
-            let center = DistributedNotificationCenter.default()
-            let userInfo: [AnyHashable: Any] = ["command": jsonString]
-            
-            center.postNotificationName(
-                NSNotification.Name("com.deskpad.control"),
-                object: nil,
-                userInfo: userInfo,
-                deliverImmediately: true
+            try NotificationUtility.sendJSONNotification(
+                payload: command,
+                notificationName: .control,
+                key: "command"
             )
         } catch {
-            print("Error: Failed to serialize command to JSON: \(error)")
+            print("Error: Failed to send command: \(error.localizedDescription)")
             exit(1)
         }
         #else
