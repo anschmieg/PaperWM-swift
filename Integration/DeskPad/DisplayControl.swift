@@ -189,11 +189,10 @@ class DisplayControl {
         NSLog("DisplayControl Response: \(jsonString)")
         
         // Also post a response notification that CLI tools can listen for
-        notificationCenter.postNotificationName(
-            Notification.Name("com.deskpad.displaycontrol.response"),
+        notificationCenter.post(
+            name: Notification.Name("com.deskpad.displaycontrol.response"),
             object: nil,
-            userInfo: ["response": jsonString],
-            deliverImmediately: true
+            userInfo: ["response": jsonString]
         )
     }
     

@@ -119,7 +119,7 @@ func sendNotification(name: String, payload: [String: Any]) throws {
     // Send the notification with the JSON payload as userInfo
     center.post(
         name: notification,
-        object: nil as String?,
+        object: nil,
         userInfo: ["payload": String(data: jsonData, encoding: .utf8) ?? "{}"]
     )
 }
