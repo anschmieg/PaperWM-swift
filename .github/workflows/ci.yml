@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+    
+    permissions:
+      contents: read
+      actions: read
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Set up Swift
+      uses: swift-actions/setup-swift@v2
+      with:
+        swift-version: '5.9'
+    
+    - name: Build deskpadctl
+      run: |
+        cd Tools/deskpadctl
+        swift build -c release
+    
+    - name: Run tests
+      run: |
+        cd Tools/deskpadctl
+        swift test
+    
+    - name: Check build artifacts
+      run: |
+        ls -la Tools/deskpadctl/.build/release/
+    
+    - name: Upload deskpadctl artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: deskpadctl
+        path: Tools/deskpadctl/.build/release/deskpadctl
+        retention-days: 7
+
+  lint:
+    runs-on: macos-latest
+    
+    permissions:
+      contents: read
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install SwiftLint
+      run: |
+        brew install swiftlint
+    
+    - name: Run SwiftLint
+      run: |
+        swiftlint --version
+        swiftlint lint --strict || true

@@ -1,0 +1,3 @@
+[submodule "submodules/DeskPad"]
+	path = submodules/DeskPad
+	url = https://github.com/Stengo/DeskPad.git
