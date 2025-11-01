@@ -21,8 +21,8 @@ deskpadctl:
 
 # Run tests
 test:
-	@echo "Running tests..."
-	cd Tools/deskpadctl && swift test
+	@echo "Running integration tests..."
+	./Tests/integration-test.sh
 	@echo "All tests passed!"
 
 # Clean build artifacts

@@ -6,7 +6,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DESKPADCTL="$PROJECT_ROOT/Tools/deskpadctl/.build/debug/deskpadctl"
+DESKPADCTL="$PROJECT_ROOT/Tools/deskpadctl/.build/release/deskpadctl"
 
 echo "🧪 Running PaperWM-swift Integration Tests"
 echo "=========================================="
