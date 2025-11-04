@@ -72,10 +72,13 @@ PaperWM-swift/
 - Platform-specific conditional compilation
 - Comprehensive help system
 - Error handling with custom errors
+ - Unix domain socket RPC (preferred fast path) with `/tmp/deskpad.sock` as default for local CLI usage
+ - Notification + per-request `replyFile` fallback (`/tmp/deskpad_response_<UUID>.json`) for robustness when socket is unavailable
 
 **Testing**:
 - 3 unit tests (all passing)
 - Integration testing via test scripts
+ - Added `Tests/ipc-smoke-test.sh` to exercise the socket fast-path and notification/file fallbacks
 
 ### 4. Canvas Management Scripts ✅
 

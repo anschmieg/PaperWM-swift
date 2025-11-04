@@ -82,6 +82,21 @@ This tests all functionality automatically and shows:
   Waiting for response from DeskPad...
 ```
 
+**Notes about IPC:**
+- The CLI prefers a Unix domain socket at `/tmp/deskpad.sock` for fast, synchronous responses. If the socket is present and a listener opened it, the `list` command will return immediately with the displays. If the socket is not present the CLI falls back to distributed notifications and will wait briefly for a response — this is normal when starting the listener concurrently.
+- You can check the socket and listener logs in another terminal:
+
+```bash
+ls -l /tmp/deskpad.sock
+tail -f /tmp/deskpad-listener.log
+```
+
+Use the helper smoke test to exercise socket and fallback behavior:
+
+```bash
+./Tests/ipc-smoke-test.sh
+```
+
 ### 5. Test Remove Command
 
 ```bash

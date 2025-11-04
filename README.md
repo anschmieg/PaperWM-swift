@@ -26,6 +26,16 @@ A Swift command-line tool for controlling DeskPad virtual displays via distribut
 - `deskpadctl remove <displayID>` - Remove a virtual display
 - `deskpadctl list` - List all virtual displays
 
+IPC behavior (socket-first)
+---------------------------
+- For interactive/local workflows the CLI now prefers a Unix domain socket at `/tmp/deskpad.sock` for low-latency, synchronous RPC.
+- If the socket is unavailable the CLI falls back to the original macOS `DistributedNotificationCenter` path. When using notifications the CLI also supports a per-request `replyFile` fallback written under `/tmp/deskpad_response_<UUID>.json` so CI and backgrounded listeners can still respond deterministically.
+- Listener logs (useful for debugging) are written to `/tmp/deskpad-listener.log` when running the provided `test-listener.swift` helper.
+
+Quick notes:
+- Use the included smoke test to exercise the socket path and fallbacks: `./Tests/ipc-smoke-test.sh`.
+- For CI or scripts that must fail fast if the socket is not present, prefer adding a wrapper to check `/tmp/deskpad.sock` before invoking `deskpadctl` or run `deskpadctl` with the `--no-socket`/`--socket-only` flags if you add them.
+
 **Example:**
 ```bash
 # Create a 1920x1080 display
