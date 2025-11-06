@@ -4,13 +4,7 @@ import Foundation
 import AppKit
 #endif
 
-// Small reference wrapper used to hold the response payload across a potentially
-// concurrently-executing notification handler. Marked @unchecked Sendable to
-// satisfy the compiler's Sendable-checking for captured references in closures.
-final class ResponseBox: @unchecked Sendable {
-    var value: String?
-    init(_ v: String? = nil) { self.value = v }
-}
+// MARK: - Async helpers and actors
 #if os(macOS)
 import Darwin
 #endif
@@ -45,7 +39,7 @@ extension DeskPadCTL {
         @Option(name: .shortAndLong, help: "Display name")
         var name: String = "DeskPad Display"
         
-    func run() throws {
+    func run() async throws {
             let payload: [String: Any] = [
                 "command": "create",
                 "width": width,
@@ -87,7 +81,7 @@ extension DeskPadCTL {
         @Argument(help: "Display ID to remove")
         var displayID: UInt32
         
-    func run() throws {
+    func run() async throws {
             let payload: [String: Any] = [
                 "command": "remove",
                 "displayID": displayID
@@ -120,7 +114,7 @@ extension DeskPadCTL {
             abstract: "List all virtual displays"
         )
         
-    func run() throws {
+    func run() async throws {
             let payload: [String: Any] = [
                 "command": "list"
             ]
@@ -156,19 +150,9 @@ extension DeskPadCTL {
                 let uuid = UUID().uuidString
                 let replyNameString = "com.deskpad.displaycontrol.response.\(uuid)"
                 let responseName = Notification.Name(replyNameString)
-                let semaphore = DispatchSemaphore(value: 0)
-                let received = ResponseBox()
 
                 let center = DistributedNotificationCenter.default()
-                // Use a nil queue so the block runs on the receiving thread
-                let observer = center.addObserver(forName: responseName, object: nil, queue: nil) { notification in
-                    if let userInfo = notification.userInfo,
-                       let payloadString = userInfo["payload"] as? String {
-                        received.value = payloadString
-                    }
-                    semaphore.signal()
-                }
-
+                
                 // Debug: show which reply channel we are listening on
                 print("  (debug) listening for replies on: \(replyNameString)")
 
@@ -182,8 +166,7 @@ extension DeskPadCTL {
                 print("✓ List command sent successfully")
                 print("  Waiting for response from DeskPad...")
 
-                // Quick-poll the reply file for up to 1s — this is fast and avoids
-                // waiting on the notification delivery path if the responder writes files.
+                // Quick-poll the reply file for up to 1s using Task.sleep (non-blocking)
                 if let replyFile = payloadWithReply["replyFile"] as? String {
                     let fm = FileManager.default
                     var foundFilePayload: String? = nil
@@ -194,7 +177,7 @@ extension DeskPadCTL {
                             try? fm.removeItem(atPath: replyFile)
                             break
                         }
-                        usleep(50_000) // 50ms
+                        try await Task.sleep(nanoseconds: 50_000_000) // 50ms
                     }
 
                     if let filePayload = foundFilePayload {
@@ -216,34 +199,63 @@ extension DeskPadCTL {
                         } else {
                             print("  Received an invalid response from DeskPad (file)")
                         }
-                        center.removeObserver(observer)
                         return
                     }
                 }
 
-                // If no file response, wait up to 1s for a notification response
-                let timeout = DispatchTime.now() + .seconds(1)
-                if semaphore.wait(timeout: timeout) == .success {
-                    if let payloadString = received.value,
-                       let data = payloadString.data(using: .utf8),
-                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                        // Pretty-print response
-                        if let displays = json["displays"] as? [[String: Any]] {
-                            print("  Displays:")
-                            for d in displays {
-                                let id = d["id"] ?? "?"
-                                let name = d["name"] ?? "Unnamed"
-                                let width = d["width"] ?? "?"
-                                let height = d["height"] ?? "?"
-                                print("    - ID: \(id) | \(name) | \(width)x\(height)")
-                            }
+                // If no file response, wait up to 1s for a notification response using continuation
+                let response: String? = try await withCheckedThrowingContinuation { continuation in
+                    var observer: NSObjectProtocol?
+                    var hasResumed = false
+                    
+                    // Create the observer
+                    observer = center.addObserver(forName: responseName, object: nil, queue: nil) { notification in
+                        guard !hasResumed else { return }
+                        hasResumed = true
+                        
+                        if let obs = observer {
+                            center.removeObserver(obs)
+                        }
+                        
+                        if let userInfo = notification.userInfo,
+                           let payloadString = userInfo["payload"] as? String {
+                            continuation.resume(returning: payloadString)
                         } else {
-                            // Fallback: print raw JSON
-                            print("  Response:")
-                            print("    \(json)")
+                            continuation.resume(returning: nil)
+                        }
+                    }
+                    
+                    // Set a timeout using Task
+                    Task {
+                        try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                        guard !hasResumed else { return }
+                        hasResumed = true
+                        
+                        if let obs = observer {
+                            center.removeObserver(obs)
+                        }
+                        
+                        continuation.resume(returning: nil)
+                    }
+                }
+                
+                if let payloadString = response,
+                   let data = payloadString.data(using: .utf8),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    // Pretty-print response
+                    if let displays = json["displays"] as? [[String: Any]] {
+                        print("  Displays:")
+                        for d in displays {
+                            let id = d["id"] ?? "?"
+                            let name = d["name"] ?? "Unnamed"
+                            let width = d["width"] ?? "?"
+                            let height = d["height"] ?? "?"
+                            print("    - ID: \(id) | \(name) | \(width)x\(height)")
                         }
                     } else {
-                        print("  Received an empty or invalid response from DeskPad")
+                        // Fallback: print raw JSON
+                        print("  Response:")
+                        print("    \(json)")
                     }
                 } else {
                     // If we timed out, check if a reply file was written by the responder as a fallback
@@ -272,9 +284,6 @@ extension DeskPadCTL {
                         print("  No response from DeskPad (timed out)")
                     }
                 }
-
-                // Remove observer
-                center.removeObserver(observer)
                 #else
                 try sendNotification(name: "com.deskpad.displaycontrol", payload: payload)
                 print("✓ List command sent successfully")
