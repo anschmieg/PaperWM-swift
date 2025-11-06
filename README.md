@@ -26,6 +26,12 @@ A Swift command-line tool for controlling DeskPad virtual displays via distribut
 - `deskpadctl remove <displayID>` - Remove a virtual display
 - `deskpadctl list` - List all virtual displays
 
+**Async/Await Architecture:**
+- All subcommands use Swift's modern async/await concurrency model for non-blocking operations
+- The List command uses continuations to wait asynchronously for distributed notification responses
+- File polling uses `Task.sleep` instead of blocking sleep for better concurrency performance
+- Requires Swift 5.9+ with ArgumentParser 1.2.0+ for async command support
+
 IPC behavior (socket-first)
 ---------------------------
 - For interactive/local workflows the CLI now prefers a Unix domain socket at `/tmp/deskpad.sock` for low-latency, synchronous RPC.

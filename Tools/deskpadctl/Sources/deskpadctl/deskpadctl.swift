@@ -5,12 +5,16 @@ import AppKit
 #endif
 
 // MARK: - Async helpers and actors
+// This tool uses Swift's async/await concurrency for non-blocking operations.
+// All subcommands conform to AsyncParsableCommand to support async run() methods.
+// The List command uses continuations to asynchronously wait for distributed notifications
+// and Task.sleep for non-blocking file polling.
 #if os(macOS)
 import Darwin
 #endif
 
 @main
-struct DeskPadCTL: ParsableCommand {
+struct DeskPadCTL: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "deskpadctl",
         abstract: "Control DeskPad virtual displays via distributed notifications",
@@ -22,7 +26,7 @@ struct DeskPadCTL: ParsableCommand {
 // MARK: - Create Command
 
 extension DeskPadCTL {
-    struct Create: ParsableCommand {
+    struct Create: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Create a new virtual display"
         )
@@ -73,7 +77,7 @@ extension DeskPadCTL {
 // MARK: - Remove Command
 
 extension DeskPadCTL {
-    struct Remove: ParsableCommand {
+    struct Remove: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Remove a virtual display by ID"
         )
@@ -109,7 +113,7 @@ extension DeskPadCTL {
 // MARK: - List Command
 
 extension DeskPadCTL {
-    struct List: ParsableCommand {
+    struct List: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "List all virtual displays"
         )
@@ -204,19 +208,22 @@ extension DeskPadCTL {
                 }
 
                 // If no file response, wait up to 1s for a notification response using continuation
+                // Uses Swift concurrency to wait for distributed notification asynchronously
                 let response: String? = try await withCheckedThrowingContinuation { continuation in
                     var observer: NSObjectProtocol?
-                    var hasResumed = false
+                    var hasResumed = false  // Flag to prevent double-resumption (which would crash)
                     
-                    // Create the observer
+                    // Create the observer to listen for the distributed notification response
                     observer = center.addObserver(forName: responseName, object: nil, queue: nil) { notification in
-                        guard !hasResumed else { return }
+                        guard !hasResumed else { return }  // Prevent double-resumption
                         hasResumed = true
                         
+                        // Clean up the observer immediately
                         if let obs = observer {
                             center.removeObserver(obs)
                         }
                         
+                        // Extract the payload from the notification and resume the continuation
                         if let userInfo = notification.userInfo,
                            let payloadString = userInfo["payload"] as? String {
                             continuation.resume(returning: payloadString)
@@ -225,12 +232,14 @@ extension DeskPadCTL {
                         }
                     }
                     
-                    // Set a timeout using Task
+                    // Set up a timeout using a detached task
+                    // This ensures we don't wait forever for a response
                     Task {
-                        try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-                        guard !hasResumed else { return }
+                        try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second timeout
+                        guard !hasResumed else { return }  // Check if already resumed
                         hasResumed = true
                         
+                        // Clean up observer and resume with nil on timeout
                         if let obs = observer {
                             center.removeObserver(obs)
                         }
