@@ -7,6 +7,10 @@ print("Press Ctrl+C to stop\n")
 
 let center = DistributedNotificationCenter.default()
 
+// Simple CLI flag support: pass --no-socket to skip creating the unix domain socket
+let args = CommandLine.arguments
+let noSocketMode = args.contains("--no-socket")
+
 // Log helper: write to /tmp/deskpad-listener.log so background runs can be inspected
 let logURL = URL(fileURLWithPath: "/tmp/deskpad-listener.log")
 func appendLog(_ s: String) {
@@ -129,6 +133,12 @@ center.addObserver(
 
 print("✅ Listener ready. Run deskpadctl commands in another terminal.\n")
 
+if noSocketMode {
+    appendLog("⚙️ Running in notification-only mode (socket disabled)")
+} else {
+    appendLog("⚙️ Running with socket server enabled at /tmp/deskpad.sock")
+}
+
 // Start a simple Unix domain socket server for fast local IPC
 let socketPath = "/tmp/deskpad.sock"
 func startSocketServer() {
@@ -216,7 +226,11 @@ func startSocketServer() {
     }
 }
 
-// Start socket server for fast local testing
-startSocketServer()
+// Start socket server for fast local testing (unless disabled via --no-socket)
+if !noSocketMode {
+    startSocketServer()
+} else {
+    appendLog("(socket server skipped due to --no-socket flag)")
+}
 
 RunLoop.main.run()

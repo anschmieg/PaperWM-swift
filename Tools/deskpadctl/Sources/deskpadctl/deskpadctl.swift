@@ -43,6 +43,9 @@ extension DeskPadCTL {
         @Option(name: .shortAndLong, help: "Display name")
         var name: String = "DeskPad Display"
         
+    @Flag(name: .long, help: "Use socket-only transport (fail if socket is not present)")
+    var socketOnly: Bool = false
+        
     func run() async throws {
             let payload: [String: Any] = [
                 "command": "create",
@@ -54,12 +57,16 @@ extension DeskPadCTL {
             
             do {
                 #if os(macOS)
-                // Prefer Unix socket RPC for low-latency local operations. Fall back to notifications if socket unavailable.
+                // Prefer Unix socket RPC for low-latency local operations.
                 if let _ = sendViaUnixSocket(socketPath: "/tmp/deskpad.sock", payload: payload, timeoutSeconds: 0.5) {
                     print("✓ Create command sent successfully (socket)")
                     print("  Display: \(name)")
                     print("  Resolution: \(width)x\(height)@\(refreshRate)Hz")
                     return
+                }
+                if socketOnly {
+                    // Fail fast when requested to use socket-only transport
+                    throw DeskPadCTLError.communicationFailed("socket unavailable (socket-only mode)")
                 }
                 #endif
                 // Fallback to notification-based delivery for wider compatibility
@@ -85,6 +92,9 @@ extension DeskPadCTL {
         @Argument(help: "Display ID to remove")
         var displayID: UInt32
         
+    @Flag(name: .long, help: "Use socket-only transport (fail if socket is not present)")
+    var socketOnly: Bool = false
+        
     func run() async throws {
             let payload: [String: Any] = [
                 "command": "remove",
@@ -97,6 +107,9 @@ extension DeskPadCTL {
                     print("✓ Remove command sent successfully (socket)")
                     print("  Display ID: \(displayID)")
                     return
+                }
+                if socketOnly {
+                    throw DeskPadCTLError.communicationFailed("socket unavailable (socket-only mode)")
                 }
                 #endif
                 try sendNotification(name: "com.deskpad.displaycontrol", payload: payload)
@@ -117,6 +130,9 @@ extension DeskPadCTL {
         static let configuration = CommandConfiguration(
             abstract: "List all virtual displays"
         )
+        
+        @Flag(name: .long, help: "Use socket-only transport (fail if socket is not present)")
+        var socketOnly: Bool = false
         
     func run() async throws {
             let payload: [String: Any] = [
@@ -146,6 +162,9 @@ extension DeskPadCTL {
                             return
                         }
                     }
+                }
+                if socketOnly {
+                    throw DeskPadCTLError.communicationFailed("socket unavailable (socket-only mode)")
                 }
                 #endif
 
