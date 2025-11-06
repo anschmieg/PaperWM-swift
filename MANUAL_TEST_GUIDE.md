@@ -1,219 +1,108 @@
 # PaperWM-swift Manual Testing Guide
 
-## Quick Test (Automated)
+This guide reflects the current implementation (socket-first IPC, async/await `deskpadctl` subcommands, notification fallback with per-request reply channels and reply-file fallback). It explains how to run the automated smoke tests and how to test manually.
 
-Run the comprehensive test script:
+## Quick automated smoke test
 
-```bash
-./manual-test.sh
-```
-
-This tests all functionality automatically and shows:
-- ✅ CLI help and version
-- ✅ Create, list, and remove commands
-- ✅ Canvas scripts
-- ✅ Integration components
-
-## Detailed Manual Testing
-
-### 1. Test CLI Help System
-
-```bash
-# Main help
-./Tools/deskpadctl/.build/release/deskpadctl --help
-
-# Subcommand help
-./Tools/deskpadctl/.build/release/deskpadctl create --help
-./Tools/deskpadctl/.build/release/deskpadctl remove --help
-./Tools/deskpadctl/.build/release/deskpadctl list --help
-```
-
-**Expected:** Clean help output with all options documented
-
-### 2. Test Version
-
-```bash
-./Tools/deskpadctl/.build/release/deskpadctl --version
-```
-
-**Expected:** `1.0.0`
-
-### 3. Test Create Command
-
-```bash
-# With defaults
-./Tools/deskpadctl/.build/release/deskpadctl create
-
-# With custom parameters
-./Tools/deskpadctl/.build/release/deskpadctl create \
-  --width 2560 \
-  --height 1440 \
-  --refresh-rate 60.0 \
-  --name "My Canvas"
-```
-
-**Expected:** 
-```
-✓ Create command sent successfully
-  Display: My Canvas
-  Resolution: 2560x1440@60.0Hz
-```
-
-**What happens:** Sends a distributed notification with JSON payload:
-```json
-{
-  "command": "create",
-  "width": 2560,
-  "height": 1440,
-  "refreshRate": 60.0,
-  "name": "My Canvas"
-}
-```
-
-### 4. Test List Command
-
-```bash
-./Tools/deskpadctl/.build/release/deskpadctl list
-```
-
-**Expected:**
-```
-✓ List command sent successfully
-  Waiting for response from DeskPad...
-```
-
-**Notes about IPC:**
-- The CLI prefers a Unix domain socket at `/tmp/deskpad.sock` for fast, synchronous responses. If the socket is present and a listener opened it, the `list` command will return immediately with the displays. If the socket is not present the CLI falls back to distributed notifications and will wait briefly for a response — this is normal when starting the listener concurrently.
-- You can check the socket and listener logs in another terminal:
-
-```bash
-ls -l /tmp/deskpad.sock
-tail -f /tmp/deskpad-listener.log
-```
-
-Use the helper smoke test to exercise socket and fallback behavior:
+The repository includes a focused IPC smoke test that starts the test listener, waits for the socket, and runs a series of CLI commands:
 
 ```bash
 ./Tests/ipc-smoke-test.sh
 ```
 
-### 5. Test Remove Command
+What it does:
+- Starts the listener (background) — `test-listener.swift` logs to `/tmp/deskpad-listener.log`.
+- Waits for `/tmp/deskpad.sock` to appear (up to a few seconds).
+- Runs `deskpadctl create`, `deskpadctl list`, `deskpadctl remove` to exercise the socket fast-path and verify fallback behavior.
+
+The smoke test is the most reliable way to exercise the socket fast-path and the notification/file fallback in a single run.
+
+## How to build the CLI
 
 ```bash
-./Tools/deskpadctl/.build/release/deskpadctl remove 1234
+cd Tools/deskpadctl
+swift build -c release
+# binary at: Tools/deskpadctl/.build/release/deskpadctl
 ```
 
-**Expected:**
-```
-✓ Remove command sent successfully
-  Display ID: 1234
-```
+## Manual testing (recommended sequence)
 
-### 6. Test Canvas Scripts
+1. Start the listener
+
+In one terminal run the listener and capture logs:
 
 ```bash
-# Arrange canvas help
-./Scripts/arrange-canvas.sh --help
-
-# Pan canvas help
-./Scripts/pan-canvas.sh --help
-
-# Example usage (won't work without yabai/windows)
-./Scripts/arrange-canvas.sh --canvas-width 3840 --window-width 1920
-./Scripts/pan-canvas.sh --step 500 right
+cd /Users/adrian/Projects/PaperWM-swift
+# start in background, record pid and log
+nohup swift test-listener.swift &>/tmp/deskpad-listener.log & echo $! >/tmp/deskpad-listener.pid
+tail -f /tmp/deskpad-listener.log
 ```
 
-**Expected:** Help output showing all options and examples
+The listener opens `/tmp/deskpad.sock` (Unix domain socket) and listens for distributed notifications.
 
-### 7. Verify Integration Files
+1. Build and run simple CLI commands in another terminal
 
 ```bash
-ls -lh Integration/DeskPad/
+Tools/deskpadctl/.build/release/deskpadctl create --width 1280 --height 720 --name "IPC Test 1"
+Tools/deskpadctl/.build/release/deskpadctl list
+Tools/deskpadctl/.build/release/deskpadctl remove 1000
 ```
 
-**Expected:**
+Notes:
+
+- If the socket is present and listener is running, the CLI prefers the socket (fast path) and will return almost instantly.
+- If the socket is unavailable, the CLI falls back to DistributedNotificationCenter and waits briefly for a response notification. It also writes/reads a per-request reply file under `/tmp/deskpad_response_<UUID>.json` as a robust fallback for headless/CI runs.
+
+1. Validate listener logs
+
+The listener log (`/tmp/deskpad-listener.log`) will show received payloads and posted responses. Example snippets:
+
+```text
+🔌 Unix socket server listening at /tmp/deskpad.sock
+🔌 Socket received: {"command":"create","width":1280,...}
+   Posting response: created display 1000
+🔌 Socket received: {"command":"list"}
+   Posting response: list (1 displays)
 ```
-DISPLAYCONTROL_INTEGRATION.md  (5.6K) - Integration guide
-DisplayControl.swift           (6.8K) - Swift component
-README.md                      (1.8K) - Quick reference
-```
 
-### 8. Test Notification Flow (Advanced)
+1. Run the smoke test
 
-To see the full notification flow, you need two terminals:
+This runs the end-to-end scenario and prints timings and outputs:
 
-**Terminal 1 - Start Listener:**
 ```bash
-swift test-listener.swift
+./Tests/ipc-smoke-test.sh
 ```
 
-**Terminal 2 - Send Commands:**
+## Testing the fallback (notifications + reply-file)
+
+To exercise the notification path (simulate socket unavailable):
+
 ```bash
-./Tools/deskpadctl/.build/release/deskpadctl create --width 1920 --height 1080
-./Tools/deskpadctl/.build/release/deskpadctl list
-./Tools/deskpadctl/.build/release/deskpadctl remove 1234
+# stop the listener (if running)
+if [ -f /tmp/deskpad-listener.pid ]; then kill "$(cat /tmp/deskpad-listener.pid)"; fi
+# ensure socket absent
+rm -f /tmp/deskpad.sock
+
+# now run the list command (it will use notifications and reply-file fallback)
+Tools/deskpadctl/.build/release/deskpadctl list
 ```
 
-**Expected in Terminal 1:**
-```
-🎧 Starting notification listener...
-Listening for: com.deskpad.displaycontrol
-Press Ctrl+C to stop
+If you have another process integrated with DeskPad/DisplayControl it should receive the notification and either post a response notification or write the reply file. The CLI will quick-poll the reply-file for up to ~1s and then wait up to ~1s for a response notification.
 
-✅ Listener ready. Run deskpadctl commands in another terminal.
+## What to watch for (known gaps)
 
-📨 Received notification!
-   Payload: {"command":"create","width":1920,"height":1080,...}
-   Parsed:
-     - command: create
-     - width: 1920
-     - height: 1080
-     ...
-```
-
-## Integration with DeskPad
-
-To integrate DisplayControl with the actual DeskPad app:
-
-1. Copy `Integration/DeskPad/DisplayControl.swift` to DeskPad project
-2. Follow instructions in `Integration/DeskPad/README.md`
-3. Initialize in DeskPad's AppDelegate:
-   ```swift
-   func applicationDidFinishLaunching(_: Notification) {
-       _ = DisplayControl.shared  // Start listening
-   }
-   ```
-
-## Test Results Summary
-
-All tests should show:
-- ✅ CLI commands execute without errors
-- ✅ Help text is clear and complete
-- ✅ Notifications are sent (visible with listener)
-- ✅ Scripts are executable and show help
-- ✅ Integration files are present
-
-## Notes
-
-- **Notifications:** Commands send macOS distributed notifications. Without DeskPad running with DisplayControl integrated, notifications are sent but not received.
-- **Canvas Scripts:** Require `yabai` window manager to actually move windows. Scripts will show help without yabai.
-- **Virtual Displays:** Actual display creation requires DeskPad app with DisplayControl integrated.
+- The repository implements a socket-first fast-path and a robust notification+reply-file fallback. However:
+  - There is currently no packaged system service (launchd plist) for the listener; developers run `test-listener.swift` manually. Consider adding a `launchd` template for production setups.
+  - `deskpadctl` currently lacks explicit `--socket-only` / `--no-socket` flags; adding them makes CI deterministic and is recommended.
+  - DisplayControl integration into the upstream DeskPad app still needs to be performed to get real virtual displays (integration docs are provided under `Integration/DeskPad/`).
 
 ## Troubleshooting
 
-**Command not found:**
-```bash
-# Use full path or add to PATH
-export PATH="$PATH:$(pwd)/Tools/deskpadctl/.build/release"
-```
+- If `deskpadctl` prints usage instead of executing a subcommand, ensure you built the binary and are running the correct binary (argument parser will show help if subcommands signatures are mismatched). Use the full path to the release binary.
+- If you see no listener logs, confirm you started `test-listener.swift` in the background and that `/tmp/deskpad.sock` exists.
+- On CI, prefer running `./Tests/ipc-smoke-test.sh` because it starts the listener and waits for the socket before exercising the CLI.
 
-**Permission denied:**
-```bash
-chmod +x Scripts/*.sh
-chmod +x test-listener.swift
-```
+## Summary
 
-**Build not found:**
-```bash
-make build
-```
+Use `./Tests/ipc-smoke-test.sh` for a reliable automated exercise of both socket and notification paths. For manual debugging, run `test-listener.swift` and the release CLI binary as shown above and inspect `/tmp/deskpad-listener.log` and `/tmp/deskpad_response_<UUID>.json` for reply-file fallbacks.
+

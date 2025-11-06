@@ -168,3 +168,7 @@ GitHub Actions automatically builds and tests the project on every push and pull
 ## License
 
 This project integrates with DeskPad, which has its own license. Please see the DeskPad submodule for its licensing terms. 
+
+## Roadmap & TODO
+
+A consolidated project TODO lives at `TODO.md` in the repository root. It lists short-term fixes, medium-term features, and long-term goals required to reach full PaperWM-like behavior and a production-quality developer UX. See `TODO.md` for details and prioritization.
