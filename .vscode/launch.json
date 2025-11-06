@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:PaperWM-swift}/Tools/deskpadctl",
+      "name": "Debug deskpadctl (Tools/deskpadctl)",
+      "target": "deskpadctl",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug deskpadctl (Tools/deskpadctl)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:PaperWM-swift}/Tools/deskpadctl",
+      "name": "Release deskpadctl (Tools/deskpadctl)",
+      "target": "deskpadctl",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release deskpadctl (Tools/deskpadctl)"
+    }
+  ]
+}
