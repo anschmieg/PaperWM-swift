@@ -210,19 +210,27 @@ extension DeskPadCTL {
                 // If no file response, wait up to 1s for a notification response using continuation
                 // Uses Swift concurrency to wait for distributed notification asynchronously
                 let response: String? = try await withCheckedThrowingContinuation { continuation in
-                    var observer: NSObjectProtocol?
-                    var hasResumed = false  // Flag to prevent double-resumption (which would crash)
-                    
+                    // Box mutable state into a small reference type and mark it as unchecked Sendable
+                    final class ObserverBox: @unchecked Sendable {
+                        var observer: NSObjectProtocol?
+                        var hasResumed: Bool = false
+                        init() {}
+                    }
+
+                    let box = ObserverBox()
+
                     // Create the observer to listen for the distributed notification response
-                    observer = center.addObserver(forName: responseName, object: nil, queue: nil) { notification in
-                        guard !hasResumed else { return }  // Prevent double-resumption
-                        hasResumed = true
-                        
+                    box.observer = center.addObserver(forName: responseName, object: nil, queue: nil) { notification in
+                        // Prevent double-resumption
+                        guard !box.hasResumed else { return }
+                        box.hasResumed = true
+
                         // Clean up the observer immediately
-                        if let obs = observer {
+                        if let obs = box.observer {
                             center.removeObserver(obs)
+                            box.observer = nil
                         }
-                        
+
                         // Extract the payload from the notification and resume the continuation
                         if let userInfo = notification.userInfo,
                            let payloadString = userInfo["payload"] as? String {
@@ -231,19 +239,20 @@ extension DeskPadCTL {
                             continuation.resume(returning: nil)
                         }
                     }
-                    
+
                     // Set up a timeout using a detached task
                     // This ensures we don't wait forever for a response
                     Task {
                         try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second timeout
-                        guard !hasResumed else { return }  // Check if already resumed
-                        hasResumed = true
-                        
+                        guard !box.hasResumed else { return }  // Check if already resumed
+                        box.hasResumed = true
+
                         // Clean up observer and resume with nil on timeout
-                        if let obs = observer {
+                        if let obs = box.observer {
                             center.removeObserver(obs)
+                            box.observer = nil
                         }
-                        
+
                         continuation.resume(returning: nil)
                     }
                 }
