@@ -1,3 +1,5 @@
+import Darwin
+
 #!/usr/bin/env swift
 import Foundation
 
@@ -34,13 +36,39 @@ appendLog("🎧 Starting notification listener...")
 appendLog("Listening for: com.deskpad.displaycontrol")
 appendLog("Press Ctrl+C to stop\n")
 
+// Helper to get peer UID from a unix domain socket fd
+func peerUID(of fd: Int32) -> uid_t? {
+    #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+        var euid: uid_t = 0
+        var egid: gid_t = 0
+        if getpeereid(fd, &euid, &egid) == 0 {
+            return euid
+        }
+        return nil
+    #else
+        var cred = ucred()
+        var len = socklen_t(MemoryLayout<ucred>.size)
+        let res = withUnsafeMutablePointer(to: &cred) { ptr -> Int32 in
+            return ptr.withMemoryRebound(to: UInt8.self, capacity: MemoryLayout<ucred>.size) { bytes in
+                var optlen = len
+                return getsockopt(fd, SOL_SOCKET, SO_PEERCRED, bytes, &optlen)
+            }
+        }
+        if res == 0 {
+            return cred.uid
+        }
+        return nil
+    #endif
+}
+
 // Simple in-memory display store for the test listener
 var displays: [[String: Any]] = []
 var nextID: UInt32 = 1000
 
 func postResponse(_ payload: [String: Any]) {
     if let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
-       let jsonString = String(data: data, encoding: .utf8) {
+       let jsonString = String(data: data, encoding: .utf8)
+    {
         center.post(name: Notification.Name("com.deskpad.displaycontrol.response"), object: nil, userInfo: ["payload": jsonString])
     }
 }
@@ -50,6 +78,12 @@ func processRequest(_ json: [String: Any]) -> [String: Any] {
     var response: [String: Any] = [:]
 
     if let command = json["command"] as? String {
+        // ping is a lightweight readiness check
+        if command == "ping" {
+            response = ["result": ["version": "1", "pid": getpid(), "uid": getuid()]]
+            appendLog("   Posting response: ping")
+            return response
+        }
         switch command {
         case "create":
             let id = nextID
@@ -91,7 +125,8 @@ func processRequest(_ json: [String: Any]) -> [String: Any] {
     // Send response via replyTo or generic channel and optionally write replyFile
     if let replyTo = json["replyTo"] as? String {
         if let data = try? JSONSerialization.data(withJSONObject: response, options: []),
-           let jsonString = String(data: data, encoding: .utf8) {
+           let jsonString = String(data: data, encoding: .utf8)
+        {
             center.post(name: Notification.Name(replyTo), object: nil, userInfo: ["payload": jsonString])
         }
     } else {
@@ -100,7 +135,20 @@ func processRequest(_ json: [String: Any]) -> [String: Any] {
 
     if let replyFile = json["replyFile"] as? String {
         if let data = try? JSONSerialization.data(withJSONObject: response, options: []) {
-            try? data.write(to: URL(fileURLWithPath: replyFile))
+            // Write atomically: write to temp file in same dir then rename
+            let replyURL = URL(fileURLWithPath: replyFile)
+            let dir = replyURL.deletingLastPathComponent()
+            let tmpName = ".tmp_reply_\(UUID().uuidString)"
+            let tmpURL = dir.appendingPathComponent(tmpName)
+            do {
+                try data.write(to: tmpURL, options: .atomic)
+                // ensure owner-only perms
+                chmod(tmpURL.path, S_IRUSR | S_IWUSR)
+                try FileManager.default.moveItem(at: tmpURL, to: replyURL)
+            } catch {
+                appendLog("   ⚠️ Failed to write reply file: \(error)")
+                try? FileManager.default.removeItem(at: tmpURL)
+            }
         }
     }
 
@@ -115,11 +163,13 @@ center.addObserver(
     appendLog("📨 Received notification!")
 
     if let userInfo = notification.userInfo,
-       let payloadString = userInfo["payload"] as? String {
+       let payloadString = userInfo["payload"] as? String
+    {
         appendLog("   Payload: \(payloadString)")
 
         if let data = payloadString.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        {
             appendLog("   Parsed:")
             for (key, value) in json {
                 appendLog("     - \(key): \(value)")
@@ -161,7 +211,7 @@ func startSocketServer() {
             cstr.withUnsafeBufferPointer { buf in
                 let copyLen = min(buf.count, maxlen)
                 memcpy(buff, buf.baseAddress, copyLen)
-                if copyLen < maxlen { buff[copyLen] = 0 } else { buff[maxlen-1] = 0 }
+                if copyLen < maxlen { buff[copyLen] = 0 } else { buff[maxlen - 1] = 0 }
             }
         }
 
@@ -183,6 +233,11 @@ func startSocketServer() {
             return
         }
 
+        // Restrict socket file permissions to owner only
+        socketPath.withCString { cstr in
+            chmod(cstr, S_IRUSR | S_IWUSR)
+        }
+
         appendLog("🔌 Unix socket server listening at \(socketPath)")
 
         while true {
@@ -193,6 +248,19 @@ func startSocketServer() {
                 return accept(fd, raw, &clientAddrLen)
             }
             if clientFd < 0 { continue }
+            // Check peer credentials and reject if UID mismatches (simple per-user auth)
+            if let peer = peerUID(of: clientFd) {
+                let local = getuid()
+                if peer != local {
+                    appendLog("⚠️ Rejected connection from uid \(peer) (expected \(local))")
+                    close(clientFd)
+                    continue
+                }
+            } else {
+                appendLog("⚠️ Could not determine peer credentials; rejecting connection")
+                close(clientFd)
+                continue
+            }
 
             // Handle client in background
             DispatchQueue.global().async {
@@ -205,7 +273,7 @@ func startSocketServer() {
                 }
                 if let s = String(data: data, encoding: .utf8) {
                     appendLog("🔌 Socket received: \(s)")
-                    if let d = s.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: d) as? [String:Any] {
+                    if let d = s.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
                         // process and return response
                         let response = processRequest(json)
                         if let respData = try? JSONSerialization.data(withJSONObject: response, options: []) {

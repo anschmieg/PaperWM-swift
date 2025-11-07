@@ -14,35 +14,43 @@ PaperWM-swift provides a complete PaperWM-like canvas application for macOS, lev
 ## Components
 
 ### 1. DeskPad Submodule
+
 DeskPad is integrated as a git submodule under `submodules/DeskPad`. It provides virtual display functionality using CoreGraphics.
 
 **Integration files** for adding DisplayControl to DeskPad are provided in `Integration/DeskPad/`. These files are kept separate to avoid modifying the third-party DeskPad repository.
 
 ### 2. deskpadctl CLI
+
 A Swift command-line tool for controlling DeskPad virtual displays via distributed notifications.
 
 **Commands:**
+
 - `deskpadctl create` - Create a new virtual display
 - `deskpadctl remove <displayID>` - Remove a virtual display
 - `deskpadctl list` - List all virtual displays
 
 **Async/Await Architecture:**
+
 - All subcommands use Swift's modern async/await concurrency model for non-blocking operations
 - The List command uses continuations to wait asynchronously for distributed notification responses
 - File polling uses `Task.sleep` instead of blocking sleep for better concurrency performance
 - Requires Swift 5.9+ with ArgumentParser 1.2.0+ for async command support
 
-IPC behavior (socket-first)
+#### IPC behavior (socket-first)
+
 ---------------------------
+
 - For interactive/local workflows the CLI now prefers a Unix domain socket at `/tmp/deskpad.sock` for low-latency, synchronous RPC.
 - If the socket is unavailable the CLI falls back to the original macOS `DistributedNotificationCenter` path. When using notifications the CLI also supports a per-request `replyFile` fallback written under `/tmp/deskpad_response_<UUID>.json` so CI and backgrounded listeners can still respond deterministically.
 - Listener logs (useful for debugging) are written to `/tmp/deskpad-listener.log` when running the provided `test-listener.swift` helper.
 
 Quick notes:
+
 - Use the included smoke test to exercise the socket path and fallbacks: `./Tests/ipc-smoke-test.sh`.
 - For CI or scripts that must fail fast if the socket is not present, prefer adding a wrapper to check `/tmp/deskpad.sock` before invoking `deskpadctl` or run `deskpadctl` with the `--no-socket`/`--socket-only` flags if you add them.
 
 **Example:**
+
 ```bash
 # Create a 1920x1080 display
 deskpadctl create --width 1920 --height 1080 --name "My Display"
@@ -55,12 +63,14 @@ deskpadctl list
 ```
 
 ### 3. Canvas Scripts
+
 Helper scripts for arranging and panning the virtual canvas:
 
 - `Scripts/arrange-canvas.sh` - Arrange windows on the canvas
 - `Scripts/pan-canvas.sh` - Pan the canvas view
 
 ### 4. DisplayControl Component
+
 A minimal integration layer added to DeskPad that listens for distributed notifications and manages virtual display lifecycle.
 
 ## Building
@@ -88,17 +98,20 @@ make install
 ## Quick Start
 
 1. **Clone the repository with submodules:**
+
    ```bash
    git clone --recursive https://github.com/anschmieg/PaperWM-swift.git
    cd PaperWM-swift
    ```
 
 2. **Build the tools:**
+
    ```bash
    make build
    ```
 
 3. **Run tests:**
+
    ```bash
    make test
    ./Tests/integration-test.sh
@@ -106,6 +119,7 @@ make install
    ```
 
 4. **Optional: Integrate DisplayControl with DeskPad:**
+
    ```bash
    # Copy integration files
    cp Integration/DeskPad/DisplayControl.swift submodules/DeskPad/DeskPad/
@@ -114,6 +128,7 @@ make install
    ```
 
 5. **Use deskpadctl:**
+
    ```bash
    # Create a virtual display
    Tools/deskpadctl/.build/release/deskpadctl create --width 1920 --height 1080
@@ -122,7 +137,8 @@ make install
 ## Development
 
 ### Repository Structure
-```
+
+```bash
 PaperWM-swift/
 ├── submodules/
 │   └── DeskPad/              # DeskPad submodule
@@ -167,8 +183,10 @@ GitHub Actions automatically builds and tests the project on every push and pull
 
 ## License
 
-This project integrates with DeskPad, which has its own license. Please see the DeskPad submodule for its licensing terms. 
+This project integrates with DeskPad, which has its own license. Please see the DeskPad submodule for its licensing terms.
 
 ## Roadmap & TODO
 
-A consolidated project TODO lives at `TODO.md` in the repository root. It lists short-term fixes, medium-term features, and long-term goals required to reach full PaperWM-like behavior and a production-quality developer UX. See `TODO.md` for details and prioritization.
+See the phase plans under the `Plans/` directory for a phased implementation breakdown (Phase 1..5). A consolidated project TODO also lives at `TODO.md` in the repository root. For a short, developer-focused implementation plan and the key design decisions locked for the IPC work, see `IMPLEMENTATION_PLAN.md` (added as part of Phase 1).
+
+The `Plans/` documents contain phased checklists and expectations. Avoid duplicating implementation details in this README; use `IMPLEMENTATION_PLAN.md` for the minimal decisions and quick start notes relevant to current development.
