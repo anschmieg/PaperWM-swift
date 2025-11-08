@@ -28,7 +28,6 @@ if [ -f "${REPO_ROOT}/test-listener" ]; then
 else
     # Fall back to running swift directly (slower but works)
     LISTENER_BINARY="/usr/bin/swift"
-    LISTENER_ARGS="${LISTENER_SWIFT}"
 fi
 
 usage() {
