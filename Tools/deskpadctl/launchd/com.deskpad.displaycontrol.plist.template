@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.deskpad.displaycontrol</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>LISTENER_BINARY_PATH</string>
+    </array>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>DESKPAD_SOCKET_PATH</key>
+        <string>SOCKET_PATH</string>
+        <key>DESKPAD_LOG_PATH</key>
+        <string>LOG_PATH</string>
+        <key>DESKPAD_HEALTH_PATH</key>
+        <string>HEALTH_PATH</string>
+    </dict>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    
+    <key>StandardOutPath</key>
+    <string>STDOUT_LOG_PATH</string>
+    
+    <key>StandardErrorPath</key>
+    <string>STDERR_LOG_PATH</string>
+    
+    <key>WorkingDirectory</key>
+    <string>WORKING_DIRECTORY</string>
+</dict>
+</plist>

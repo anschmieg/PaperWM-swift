@@ -1,6 +1,7 @@
-import Darwin
-
 #!/usr/bin/env swift
+#if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+import Darwin
+#endif
 import Foundation
 
 print("🎧 Starting notification listener...")
@@ -13,8 +14,13 @@ let center = DistributedNotificationCenter.default()
 let args = CommandLine.arguments
 let noSocketMode = args.contains("--no-socket")
 
-// Log helper: write to /tmp/deskpad-listener.log so background runs can be inspected
-let logURL = URL(fileURLWithPath: "/tmp/deskpad-listener.log")
+// Get paths from environment or use defaults
+let socketPath = ProcessInfo.processInfo.environment["DESKPAD_SOCKET_PATH"] ?? "/tmp/deskpad.sock"
+let logPath = ProcessInfo.processInfo.environment["DESKPAD_LOG_PATH"] ?? "/tmp/deskpad-listener.log"
+let healthPath = ProcessInfo.processInfo.environment["DESKPAD_HEALTH_PATH"] ?? "/tmp/deskpad-listener.health"
+
+// Log helper: write to log file so background runs can be inspected
+let logURL = URL(fileURLWithPath: logPath)
 func appendLog(_ s: String) {
     // print to stdout as well
     print(s)
@@ -35,6 +41,65 @@ func appendLog(_ s: String) {
 appendLog("🎧 Starting notification listener...")
 appendLog("Listening for: com.deskpad.displaycontrol")
 appendLog("Press Ctrl+C to stop\n")
+
+// Health file management
+func writeHealthFile() {
+    let pid = getpid()
+    let timestamp = Date().timeIntervalSince1970
+    let healthData: [String: Any] = [
+        "pid": pid,
+        "timestamp": timestamp,
+        "socket_path": socketPath,
+        "log_path": logPath
+    ]
+    
+    if let jsonData = try? JSONSerialization.data(withJSONObject: healthData, options: [.prettyPrinted]) {
+        do {
+            try jsonData.write(to: URL(fileURLWithPath: healthPath), options: .atomic)
+            // Set owner-only permissions on health file
+            chmod(healthPath, S_IRUSR | S_IWUSR)
+            appendLog("✓ Health file written to \(healthPath)")
+        } catch {
+            appendLog("⚠️ Failed to write health file: \(error)")
+        }
+    }
+}
+
+func cleanupHealthFile() {
+    try? FileManager.default.removeItem(atPath: healthPath)
+    appendLog("✓ Health file removed")
+}
+
+// Cleanup handler for graceful shutdown
+var cleanupHandlerInstalled = false
+func installCleanupHandler() {
+    guard !cleanupHandlerInstalled else { return }
+    cleanupHandlerInstalled = true
+    
+    let cleanup = {
+        appendLog("\n🛑 Shutting down listener...")
+        
+        // Remove socket file
+        if FileManager.default.fileExists(atPath: socketPath) {
+            try? FileManager.default.removeItem(atPath: socketPath)
+            appendLog("✓ Socket file removed")
+        }
+        
+        // Remove health file
+        cleanupHealthFile()
+        
+        exit(0)
+    }
+    
+    // Install signal handlers for graceful shutdown
+    signal(SIGINT) { _ in cleanup() }
+    signal(SIGTERM) { _ in cleanup() }
+}
+
+// Write initial health file
+writeHealthFile()
+installCleanupHandler()
+
 
 // Helper to get peer UID from a unix domain socket fd
 func peerUID(of fd: Int32) -> uid_t? {
@@ -186,19 +251,22 @@ print("✅ Listener ready. Run deskpadctl commands in another terminal.\n")
 if noSocketMode {
     appendLog("⚙️ Running in notification-only mode (socket disabled)")
 } else {
-    appendLog("⚙️ Running with socket server enabled at /tmp/deskpad.sock")
+    appendLog("⚙️ Running with socket server enabled at \(socketPath)")
 }
 
 // Start a simple Unix domain socket server for fast local IPC
-let socketPath = "/tmp/deskpad.sock"
 func startSocketServer() {
     DispatchQueue.global(qos: .background).async {
-        // remove existing socket file
-        try? FileManager.default.removeItem(atPath: socketPath)
+        // Remove existing socket file (cleanup stale socket)
+        if FileManager.default.fileExists(atPath: socketPath) {
+            appendLog("⚠️ Removing stale socket file at \(socketPath)")
+            try? FileManager.default.removeItem(atPath: socketPath)
+        }
 
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         if fd < 0 {
-            appendLog("⚠️ Failed to create socket")
+            let err = String(cString: strerror(errno))
+            appendLog("⚠️ Failed to create socket: \(err) (errno: \(errno))")
             return
         }
 
@@ -222,18 +290,20 @@ func startSocketServer() {
             return bind(fd, raw, addrlen)
         }
         if bindRes != 0 {
-            appendLog("⚠️ Failed to bind socket at \(socketPath)")
+            let err = String(cString: strerror(errno))
+            appendLog("⚠️ Failed to bind socket at \(socketPath): \(err) (errno: \(errno))")
             close(fd)
             return
         }
 
         if listen(fd, 10) != 0 {
-            appendLog("⚠️ Failed to listen on socket")
+            let err = String(cString: strerror(errno))
+            appendLog("⚠️ Failed to listen on socket: \(err) (errno: \(errno))")
             close(fd)
             return
         }
 
-        // Restrict socket file permissions to owner only
+        // Restrict socket file permissions to owner only (0600)
         socketPath.withCString { cstr in
             chmod(cstr, S_IRUSR | S_IWUSR)
         }
@@ -247,7 +317,11 @@ func startSocketServer() {
                 let raw = UnsafeMutableRawPointer(ptr).assumingMemoryBound(to: sockaddr.self)
                 return accept(fd, raw, &clientAddrLen)
             }
-            if clientFd < 0 { continue }
+            if clientFd < 0 {
+                let err = String(cString: strerror(errno))
+                appendLog("⚠️ Accept failed: \(err) (errno: \(errno))")
+                continue
+            }
             // Check peer credentials and reject if UID mismatches (simple per-user auth)
             if let peer = peerUID(of: clientFd) {
                 let local = getuid()
