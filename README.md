@@ -134,6 +134,64 @@ make install
    Tools/deskpadctl/.build/release/deskpadctl create --width 1920 --height 1080
    ```
 
+## DeskPad Listener Service
+
+The DeskPad listener runs as a background service and handles display control requests via both Unix domain sockets (for low-latency local IPC) and distributed notifications (for compatibility).
+
+### Installing the Listener
+
+The listener can be installed as a launchd service that runs automatically:
+
+```bash
+# Install and start the listener service
+Tools/deskpadctl/bin/install-listener.sh install
+
+# Check status
+Tools/deskpadctl/bin/install-listener.sh status
+
+# Stop the service
+Tools/deskpadctl/bin/install-listener.sh stop
+
+# Start the service
+Tools/deskpadctl/bin/install-listener.sh start
+
+# Uninstall the service
+Tools/deskpadctl/bin/install-listener.sh uninstall
+```
+
+The installation script:
+- Copies a launchd plist to `~/Library/LaunchAgents/`
+- Configures the listener to run automatically at login
+- Sets up logging and health monitoring
+- Cleans up stale socket and health files
+
+### Listener Paths
+
+By default, the listener uses these paths:
+- **Socket**: `/tmp/deskpad.sock` (0600 permissions, owner-only access)
+- **Log**: `/tmp/deskpad-listener.log`
+- **Health file**: `/tmp/deskpad-listener.health` (contains PID and timestamp)
+
+These paths can be customized via environment variables:
+- `DESKPAD_SOCKET_PATH`
+- `DESKPAD_LOG_PATH`
+- `DESKPAD_HEALTH_PATH`
+
+### Manual Testing
+
+For development and debugging, you can run the listener manually:
+
+```bash
+# Run listener in foreground
+swift test-listener.swift
+
+# Run in notification-only mode (disable socket)
+swift test-listener.swift --no-socket
+```
+
+See [MANUAL_TEST_GUIDE.md](MANUAL_TEST_GUIDE.md) for detailed testing instructions and [Integration/IPC.md](Integration/IPC.md) for the complete IPC protocol specification.
+
+
 ## Development
 
 ### Repository Structure

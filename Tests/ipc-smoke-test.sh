@@ -18,7 +18,7 @@ now() { perl -MTime::HiRes=time -e 'printf("%.6f", time)'; }
 echo "== IPC smoke test =="
 
 # cleanup
-rm -f "$LOG" "$PIDFILE" "$SOCK" /tmp/deskpad_response_*.json || true
+rm -f "$LOG" "$PIDFILE" "$SOCK" /tmp/deskpad-listener.health /tmp/deskpad_response_*.json || true
 
 echo "Starting listener (background)..."
 nohup swift "$LISTENER" &>"$LOG" & echo $! > "$PIDFILE"

@@ -2,6 +2,117 @@
 
 This guide reflects the current implementation (socket-first IPC, async/await `deskpadctl` subcommands, notification fallback with per-request reply channels and reply-file fallback). It explains how to run the automated smoke tests and how to test manually.
 
+## Listener Service Management (Phase 2)
+
+The DeskPad listener can now be installed and managed as a launchd service for automatic startup and robust operation.
+
+### Installation and Lifecycle Testing
+
+Follow this sequence to verify the complete listener lifecycle:
+
+```bash
+# 1. Install the listener service
+Tools/deskpadctl/bin/install-listener.sh install
+
+# Expected output:
+# - Service installed confirmation
+# - Socket, log, and health file paths printed
+# - Service automatically started
+
+# 2. Verify status
+Tools/deskpadctl/bin/install-listener.sh status
+
+# Expected output:
+# - Service plist installed: ✓
+# - Service loaded in launchd: ✓
+# - PID and state shown
+# - Socket exists with srw------- (0600) permissions
+# - Health file exists with PID and timestamp
+# - Recent log entries shown
+
+# 3. Test socket permissions
+ls -l /tmp/deskpad.sock
+
+# Expected: srw------- (owner-only read/write)
+
+# 4. Check health file
+cat /tmp/deskpad-listener.health
+
+# Expected: JSON with pid, timestamp, socket_path, log_path
+
+# 5. Test service restart
+Tools/deskpadctl/bin/install-listener.sh stop
+sleep 2
+Tools/deskpadctl/bin/install-listener.sh start
+Tools/deskpadctl/bin/install-listener.sh status
+
+# Expected: Service stops cleanly and restarts
+
+# 6. Test launchd auto-restart (kill process)
+# Get PID from status or health file
+PID=$(launchctl print "gui/$(id -u)/com.deskpad.displaycontrol" | grep 'pid =' | awk '{print $3}')
+kill $PID
+sleep 3
+Tools/deskpadctl/bin/install-listener.sh status
+
+# Expected: launchd automatically restarts the service (new PID)
+
+# 7. Test deskpadctl commands with running service
+Tools/deskpadctl/.build/release/deskpadctl create --width 1280 --height 720 --name "Test Display"
+Tools/deskpadctl/.build/release/deskpadctl list
+Tools/deskpadctl/.build/release/deskpadctl remove 1000
+
+# Expected: Fast responses via socket (< 100ms)
+
+# 8. Verify logs
+tail -20 /tmp/deskpad-listener.log
+
+# Expected: Log entries for socket bind, accepts, and command processing
+
+# 9. Clean uninstall
+Tools/deskpadctl/bin/install-listener.sh uninstall
+
+# Expected:
+# - Service stopped and unloaded
+# - Plist removed
+# - Socket file removed
+# - Health file removed
+
+# 10. Verify cleanup
+ls /tmp/deskpad.sock          # Should not exist
+ls /tmp/deskpad-listener.health   # Should not exist
+Tools/deskpadctl/bin/install-listener.sh status
+
+# Expected: Service not installed
+```
+
+### Troubleshooting Service Issues
+
+If the service fails to start or behaves unexpectedly:
+
+```bash
+# Check launchd status
+launchctl print "gui/$(id -u)/com.deskpad.displaycontrol"
+
+# Check stdout/stderr logs
+cat /tmp/deskpad-listener.log.stdout
+cat /tmp/deskpad-listener.log.stderr
+
+# Check main log
+tail -50 /tmp/deskpad-listener.log
+
+# Look for bind errors (address in use)
+# Look for permission errors
+# Look for Swift compilation errors
+```
+
+Common issues:
+- **Socket already exists**: Run `rm /tmp/deskpad.sock` or use the install script which cleans stale files
+- **Permission denied**: Ensure you're running as the same user that will use deskpadctl
+- **Service won't start**: Check stderr log for Swift errors or missing dependencies
+
+
+
 ## Quick automated smoke test
 
 The repository includes a focused IPC smoke test that starts the test listener, waits for the socket, and runs a series of CLI commands:
